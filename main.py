@@ -15,8 +15,6 @@ from PyQt5.QtCore import QUrl
 from PyQt5.QtWidgets import QApplication, QMainWindow, QMenu, QAction
 from PyQt5.QtCore import Qt
 
-# TODO: The codec for qt5 sucks major butt. Might be worth looking into alternatives that can play more of my songs
-
 pathListPath = "C:\\Users\\payto\\OneDrive\\Desktop\\Music Project\\Stained-Glass-Music-Player\\paths.json" # One hard-coded path to avoid many more hard-coded paths
 songspath = ""
 playlistsPath = ""
@@ -108,7 +106,7 @@ class PlaylistViewerWindow(QWidget):
         f.close()
         
     def open_metadata_editor(self):
-        print("Selected item: ", self.songsListWidget.selectedItems())
+        # print("Selected item: ", self.songsListWidget.selectedItems())
         self.mDSongsWindow = metadata_window()
         self.mDSongsWindow.selectedSong = TinyTag.get("../" + self.songsListWidget.selectedItems()[0].text())
         self.mDSongsWindow.show()
@@ -373,51 +371,7 @@ def ScanFilePaths():
     f.close()
 
 
-# Example code for a menu. Not real, ignore
-def show_right_click_menu(self, position):
-    # 3. Create the QMenu container
-    context_menu = QMenu(self)
-
-    # 4. Define individual menu options
-    action_one = QAction("Option One", self)
-    action_two = QAction("Option Two", self)
-    action_exit = QAction("Exit Application", self)
-
-    # 5. Attach functional triggers to each action
-    action_one.triggered.connect(lambda: print("Option One clicked!"))
-    action_two.triggered.connect(lambda: print("Option Two clicked!"))
-    action_exit.triggered.connect(self.close)
-
-    # 6. Load actions into the context menu
-    context_menu.addAction(action_one)
-    context_menu.addAction(action_two)
-    context_menu.addSeparator()  # Adds a physical visual line divider
-    context_menu.addAction(action_exit)
-
-    context_menu.addSeparator()
-
-    # 4. Create the nested dropdown menu (Submenu)
-    dropdown_menu = QMenu("Settings Dropdown", self)
-
-    # 5. Add options inside the dropdown menu
-    option1 = QAction("Enable Dark Mode", self)
-    option1.triggered.connect(lambda: print("Dark Mode Toggled"))
-    dropdown_menu.addAction(option1)
-
-    option2 = QAction("Reset to Default", self)
-    option2.triggered.connect(lambda: print("Settings Reset"))
-    dropdown_menu.addAction(option2)
-
-    # 6. Attach the dropdown menu to the main context menu
-    context_menu.addMenu(dropdown_menu)
-
-    # 7. Render menu directly at the cursor's absolute screen coordinates
-    global_position = self.mapToGlobal(position)
-    context_menu.exec_(global_position)
-
-
 # context menu for right clicking on songs
-# TODO: Refresh the playlist menu when we do this
 def edit_songs_menu(self, position, selected_items, input_playlist = None):
     context_menu = QMenu(self)
 
@@ -465,7 +419,6 @@ def edit_songs_menu(self, position, selected_items, input_playlist = None):
 
 
 # copies all songs to a new playlist. Optionally deletes them from current playlist
-# TODO: I don't check anywhere that the filepath is valid. Could maybe risk crashing
 def copy_songs_to_playlist(self, songs, input_playlist = None, output_playlist = None):
 
     if output_playlist is not None: # output_playlist may be "none" if songs are just being deleted from current playlist instead of moved
@@ -535,7 +488,7 @@ def create_new_playlist(self, overwrite = False, selectedPlaylist = None):
 def play_song(self, inputSong):
     mPlayer.stop()
     url = QUrl.fromLocalFile(str(songspath + "//" + inputSong))
-    print(url)
+    # print(url)
     mPlayer.setMedia(QMediaContent(url))
     mPlayer.play()
 
