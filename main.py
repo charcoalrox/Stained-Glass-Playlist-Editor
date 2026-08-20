@@ -9,24 +9,20 @@ import find_forgotten_songs
 import m3u_cleaner
 
 # TODO: combine like includes
-from PyQt5.QtWidgets import QApplication, QMainWindow, QPushButton, QLabel, QVBoxLayout, QWidget, QListWidget, QApplication, QAbstractItemView, QLineEdit, QAbstractItemView
+from PyQt5.QtWidgets import QApplication, QMainWindow, QPushButton, QLabel, QVBoxLayout, QWidget, QListWidget, QApplication, QAbstractItemView, QLineEdit, QAbstractItemView, QSlider
 from PyQt5.QtMultimedia import QMediaPlayer, QMediaContent
 from PyQt5.QtCore import QUrl
 from PyQt5.QtWidgets import QApplication, QMainWindow, QMenu, QAction
 from PyQt5.QtCore import Qt
 
-# TODO: Music is played on main window. If you play music from any other function is merely passes to the main window which can kill other songs
-    # TODO: Music should also have a slider.
-    # TODO: Songs played via songspath and not the local playlist path may perhaps be a good idea so I don't have to modify cwd every time we wanna play a song
-# TODO: Playlists can be manually refreshed. Might be cooler if it's done automatically
-# TODO: Relative paths mean I need a constant CWD. Either make paths global or find a way to ensure the cwd is always the dir containing main when this program is run or it will fail
-# TODO: Python can't open certain playlists because it's missing foreign characters. Make sure this is fixed on my computer so I can actually use this software when it's done, please "File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.11_3.11.2544.0_x64__qbz5n2kfra8p0\Lib\encodings\cp1252.py", line 23, in decode
-                                                                                                                                                                                            #return codecs.charmap_decode(input,self.errors,decoding_table)[0]"
+# TODO: The codec for qt5 sucks major butt. Might be worth looking into alternatives that can play more of my songs
 
 pathListPath = "C:\\Users\\payto\\OneDrive\\Desktop\\Music Project\\Stained-Glass-Music-Player\\paths.json" # One hard-coded path to avoid many more hard-coded paths
 songspath = ""
 playlistsPath = ""
 
+
+mPlayer = QMediaPlayer()
 
 # Lists songs not yet put into a playlist. Popup Window (disabled by default)
 class ForgottenSongsWindow(QWidget):
@@ -77,13 +73,9 @@ class PlaylistViewerWindow(QWidget):
         layout.addWidget(self.songsListWidget)
         self.songsListWidget.setSelectionMode(QAbstractItemView.ExtendedSelection) # Enables multi-item list selections
 
-        self.button = QPushButton("Play")
-        self.button.clicked.connect(self.play_song)
-        layout.addWidget(self.button)
-
-        self.button = QPushButton("Edit Song")
-        self.button.clicked.connect(self.open_metadata_editor)
-        layout.addWidget(self.button)
+        # self.button = QPushButton("Edit Song")
+        # self.button.clicked.connect(self.open_metadata_editor)
+        # layout.addWidget(self.button)
 
         self.button = QPushButton("Refresh")
         self.button.clicked.connect(self.prep_Window)
@@ -94,8 +86,6 @@ class PlaylistViewerWindow(QWidget):
         self.customContextMenuRequested.connect(
             lambda position: edit_songs_menu(self, position, self.songsListWidget.selectedItems(), self.selectedPlaylist)
         )
-
-        self.player = QMediaPlayer()
 
         self.setLayout(layout)
 
@@ -116,11 +106,6 @@ class PlaylistViewerWindow(QWidget):
                 else: # Display remaining files that contain a file extension
                     self.songsListWidget.addItem(x[3:].strip())
         f.close()
-
-    def play_song(self):
-        url = QUrl.fromLocalFile(str("../" + self.songsListWidget.selectedItems()[0].text()))
-        self.player.setMedia(QMediaContent(url))
-        self.player.play()
         
     def open_metadata_editor(self):
         print("Selected item: ", self.songsListWidget.selectedItems())
@@ -248,41 +233,31 @@ class MainWindow(QMainWindow):
         self.display_playlists()
         layout.addWidget(self.playlistList)
 
+        mPlayer.positionChanged.connect(self.update_slider_position)
+        # Progress bar for position in song
+        self.bar = QSlider(Qt.Horizontal)
+        self.bar.setRange(0, 100)
+        self.bar.sliderReleased.connect(self.update_song_time)
+        layout.addWidget(self.bar)
+
+        # Play/Pause whatever songs are currently playing
+        self.button = QPushButton("Play/Pause Song")
+        self.button.clicked.connect(self.play_or_pause_song)
+        layout.addWidget(self.button)
+
         # Access unsued songs window
         self.button = QPushButton("Find Forgotten Songs")
         self.button.clicked.connect(self.window_unused_songs)
-        layout.addWidget(self.button)
-
-        # Display contents of selected playlist
-        self.button = QPushButton("Open Playlist")
-        self.button.clicked.connect(self.window_playlist_contents)
         layout.addWidget(self.button)
 
         # Modify playlists into a generalized .m3u8 format
         self.button = QPushButton("Playlist Scrubber")
         self.button.clicked.connect(self.m3u_repair)
         layout.addWidget(self.button)
-        
-        # Create a new playlist here
-        self.button = QPushButton("New Playlist")
-        self.button.clicked.connect(lambda: create_new_playlist(self))
-        layout.addWidget(self.button)
-
-        # Edit Existing Playlist
-        # TODO: This should be a dropdown option
-        self.button = QPushButton("Edit Playlist")
-        self.button.clicked.connect(lambda: create_new_playlist(self, True, self.playlistList.selectedItems()))
-        layout.addWidget(self.button)
-
-        self.button = QPushButton("Delete Playlist")
-        self.button.clicked.connect(lambda: self.delete_playlist(self.playlistList.selectedItems()[0]))
-        layout.addWidget(self.button)
 
         # Enable custom context menu
         self.setContextMenuPolicy(Qt.CustomContextMenu)
-        self.customContextMenuRequested.connect(
-            lambda position: show_right_click_menu(self, position)
-        ) # Real one will edit playlist names and descriptions
+        self.customContextMenuRequested.connect(self.main_context_menu) # Real one will edit playlist names and descriptions
 
         # Holder vars for child windows of main
         self.fFSongsWindow = None
@@ -299,7 +274,7 @@ class MainWindow(QMainWindow):
 
     # display all songs inside of playlist
     def window_playlist_contents(self):
-        print("Selected items: ", self.playlistList.selectedItems())
+        # print("Selected items: ", self.playlistList.selectedItems())
 
         if self.selectedPlaylist is not None:
             self.pCSongsWindow = PlaylistViewerWindow()
@@ -308,6 +283,25 @@ class MainWindow(QMainWindow):
             self.pCSongsWindow.show()
         else:
             print("ERROR: Please select a playlist to proceed")
+
+    # Funcs that don't open windows
+
+    # Set progress bar to accurate song time
+    def update_slider_position(self, position):
+        duration = mPlayer.duration()
+
+        if duration > 0 and not self.bar.isSliderDown(): # Make sure a song is playing and that the user isn't already trying to update time
+            percent = (position / duration) * 100 # Convert position to number out of 100 so I don't have to update the slider values per song (which would break current update_song_time() implementation)
+            self.bar.setValue(int(percent))
+
+    # Set song time to position on slider
+    def update_song_time(self):
+        if mPlayer.isSeekable():
+            mPlayer.newPosition = int((mPlayer.duration()/100) * self.bar.value()) # Convert song time to percent value out of 100 and then add the percent value from the current progress of the slider (ugly but works great!)
+            mPlayer.setPosition(mPlayer.newPosition)
+
+    def play_or_pause_song(self):
+        mPlayer.play() if mPlayer.state() == QMediaPlayer.PausedState else mPlayer.pause()
 
     # Store current playlistList selection into a variable for later use
     def selectionChanged(self):
@@ -333,6 +327,30 @@ class MainWindow(QMainWindow):
             os.remove(targetPath)
             self.display_playlists() # refresh playlists when done
             self.selectionChanged()
+
+
+
+    def main_context_menu(self, position):
+        context = QMenu(self)
+
+        open_playlist = QAction("Open playlist", self)
+        open_playlist.triggered.connect(self.window_playlist_contents)
+        context.addAction(open_playlist)
+
+        edit_playlist = QAction("Edit playlist", self)
+        edit_playlist.triggered.connect(lambda: create_new_playlist(self, True, self.playlistList.selectedItems()[0]))
+        context.addAction(edit_playlist)
+
+        create_playlist = QAction("Create playlist", self)
+        create_playlist.triggered.connect(lambda: create_new_playlist(self))
+        context.addAction(create_playlist)
+
+        delete_playlist = QAction("Delete playlist", self)
+        delete_playlist.triggered.connect(lambda: self.delete_playlist(self.playlistList.selectedItems()[0]))
+        context.addAction(delete_playlist)
+
+        context.exec(self.mapToGlobal(position))
+
 
     def closeEvent(self, event):
         for window in QApplication.topLevelWidgets():
@@ -402,6 +420,11 @@ def show_right_click_menu(self, position):
 # TODO: Refresh the playlist menu when we do this
 def edit_songs_menu(self, position, selected_items, input_playlist = None):
     context_menu = QMenu(self)
+
+    # Optionally, play selected song
+    action_play_music = QAction("Play Song")
+    action_play_music.triggered.connect(lambda: play_song(self, selected_items[0].text()))
+    context_menu.addAction(action_play_music)
 
     # Move songs to a new playlist without modifying an existing playlist
     action_one = QMenu("Copy song(s) to new playlist")
@@ -506,6 +529,16 @@ def create_new_playlist(self, overwrite = False, selectedPlaylist = None):
             for line in f:
                 if line.startswith("###"):
                     self.playListEditorWindow.newDesc.setText(line[3:])
+
+
+# Empty music queue and play currently selected song from any window
+def play_song(self, inputSong):
+    mPlayer.stop()
+    url = QUrl.fromLocalFile(str(songspath + "//" + inputSong))
+    print(url)
+    mPlayer.setMedia(QMediaContent(url))
+    mPlayer.play()
+
 
 if __name__ == "__main__":
     ScanFilePaths()
