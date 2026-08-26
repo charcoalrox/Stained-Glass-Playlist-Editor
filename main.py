@@ -3,18 +3,19 @@
 import sys
 import os
 import re
-from tinytag import TinyTag # Displays and edits song metadata
 import time
+from tinytag import TinyTag # Displays and edits song metadata
 
 import find_forgotten_songs
 import m3u_cleaner
 
-# TODO: combine like includes
-from PyQt5.QtWidgets import QApplication, QMainWindow, QPushButton, QLabel, QVBoxLayout, QWidget, QListWidget, QApplication, QAbstractItemView, QLineEdit, QAbstractItemView, QSlider, QWidgetAction
+from PyQt5.QtWidgets import (
+    QApplication, QMainWindow, QPushButton, QLabel, QVBoxLayout, QWidget, 
+    QListWidget, QApplication, QAbstractItemView, QLineEdit, QAbstractItemView, 
+    QSlider, QWidgetAction, QApplication, QMainWindow, QMenu, QAction
+    )
 from PyQt5.QtMultimedia import QMediaPlayer, QMediaContent
-from PyQt5.QtCore import QUrl
-from PyQt5.QtWidgets import QApplication, QMainWindow, QMenu, QAction
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import QUrl, Qt
 
 pathListPath = "C:\\Users\\payto\\OneDrive\\Desktop\\Music Project\\Stained-Glass-Music-Player\\paths.json" # One hard-coded path to avoid many more hard-coded paths
 songspath = ""
@@ -88,10 +89,10 @@ class PlaylistViewerWindow(QWidget):
         self.mDSongsWindow = None # Holder variable for the Meta Data Song editor window
 
     def prep_Window(self):
-        self.setWindowTitle(self.selectedPlaylist.text()[:-5])
+        self.setWindowTitle(self.selectedPlaylist[:-5])
         self.songsListWidget.clear()
 
-        fileName = (playlistsPath + "//" + self.selectedPlaylist.text())
+        fileName = (playlistsPath + "//" + self.selectedPlaylist)
         with open(fileName, "r", encoding='utf-8', errors='ignore') as f:
             for x in f: 
                 if x[0] == '#' and x[1] == '#' and x[2] == '#': # Set playlist description if present
@@ -107,9 +108,6 @@ class PlaylistViewerWindow(QWidget):
         self.mDSongsWindow = metadata_window()
         self.mDSongsWindow.selectedSong = TinyTag.get("../" + self.songsListWidget.selectedItems()[0].text())
         self.mDSongsWindow.show()
-
-    # def refresh_list(self):
-
 
 
 # Display metadata for song and allow user to change any metadata they want to
@@ -178,14 +176,14 @@ class playlistEditorWindow(QWidget):
 
             # Check if file is real, Copy data if yes
             if os.path.exists(filePath):
-                with open(filePath, "r") as f:
+                with open(filePath, "r", encoding="utf-8") as f:
                     file_data = f.read()
 
             if self.playlistToDelete is not None and self.playlistToDelete.text() != f"{title_text}.m3u8" and os.path.exists(f"{playlistsPath}//{self.playlistToDelete.text()}"):
                 self.parent_window.delete_playlist(self.playlistToDelete)
 
             # Write file with provided data from LineEdit elems
-            with open(f"{playlistsPath}//{title_text}.m3u8", "w") as f:
+            with open(f"{playlistsPath}//{title_text}.m3u8", "w", encoding="utf-8") as f:
                 f.write("#EXTM3U\n")
                 f.write(f"#{title_text}\n")
 
@@ -277,7 +275,7 @@ class MainWindow(QMainWindow):
 
         if self.selectedPlaylist is not None:
             self.pCSongsWindow = PlaylistViewerWindow()
-            self.pCSongsWindow.selectedPlaylist = self.selectedPlaylist
+            self.pCSongsWindow.selectedPlaylist = self.selectedPlaylist.text()
             self.pCSongsWindow.prep_Window()
             self.pCSongsWindow.show()
         else:
@@ -292,6 +290,9 @@ class MainWindow(QMainWindow):
         if duration > 0 and not self.bar.isSliderDown(): # Make sure a song is playing and that the user isn't already trying to update time
             percent = (position / duration) * 100 # Convert position to number out of 100 so I don't have to update the slider values per song (which would break current update_song_time() implementation)
             self.bar.setValue(int(percent))
+
+            if percent >= 100:
+                self.nowPlayingText.setText("Currently Playing: Nothing")
 
     # Get currently playing media from player and convert URL into readable format
     def update_now_playing_label(self):
@@ -340,14 +341,6 @@ class MainWindow(QMainWindow):
     def main_context_menu(self, position):
         context = QMenu(self)
 
-        # Description of selected playlist (if applicable)
-        text_action = QWidgetAction(context)
-        text_description = QLabel(" ")
-        text_action.setDefaultWidget(text_description)
-        context.addAction(text_action)
-
-        context.addSeparator()
-
         open_playlist = QAction("Open playlist", self)
         open_playlist.triggered.connect(self.window_playlist_contents)
         context.addAction(open_playlist)
@@ -365,6 +358,15 @@ class MainWindow(QMainWindow):
         delete_playlist = QAction("Delete playlist", self)
         delete_playlist.triggered.connect(lambda: self.delete_playlist(self.playlistList.selectedItems()[0]))
         context.addAction(delete_playlist)
+
+        context.addSeparator()
+
+        # Description of selected playlist (if applicable)
+        text_action = QWidgetAction(context)
+        text_description = QLabel(" ")
+        text_description.setWordWrap(True)
+        text_action.setDefaultWidget(text_description)
+        context.addAction(text_action)
 
         # Disable options that require a specific playlist to be selected if no playlist is selected
         if not self.playlistList.selectedItems():
@@ -392,7 +394,7 @@ class MainWindow(QMainWindow):
 
 # Initialize file paths before running software
 def ScanFilePaths():
-    with open(pathListPath, "r") as f:
+    with open(pathListPath, "r", encoding="utf-8") as f:
         global songspath
         global playlistsPath
 
@@ -461,7 +463,7 @@ def copy_songs_to_playlist(self, songs, input_playlist = None, output_playlist =
     if output_playlist is not None: # output_playlist may be "none" if songs are just being deleted from current playlist instead of moved
         fileName = (playlistsPath + "//" + output_playlist)
 
-        with open(fileName, "rb+") as f:
+        with open(fileName, "rb+", encoding="utf-8") as f:
             # Go to the end of the file
             f.seek(0, os.SEEK_END)
             pos = f.tell()
@@ -507,6 +509,7 @@ def copy_songs_to_playlist(self, songs, input_playlist = None, output_playlist =
 # Global so that I can make this a dropdown menu option that also exists on basically every window
 def create_new_playlist(self, overwrite = False, selectedPlaylist = None):
 
+    # Summon Playlist Editor Window so user may input new data
     self.playListEditorWindow = playlistEditorWindow()
     self.playListEditorWindow.selectedPlaylist = self.selectedPlaylist
     if overwrite: self.playListEditorWindow.playlistToDelete = self.selectedPlaylist
@@ -515,7 +518,7 @@ def create_new_playlist(self, overwrite = False, selectedPlaylist = None):
 
     if self.selectedPlaylist is not None and overwrite == True:
         self.playListEditorWindow.newName.setText(self.selectedPlaylist.text()[:-5])
-        with open(f"{playlistsPath}//{self.selectedPlaylist.text()}", "r") as f:
+        with open(f"{playlistsPath}//{self.selectedPlaylist.text()}", "r", encoding="utf-8") as f:
             for line in f:
                 if line.startswith("###"):
                     self.playListEditorWindow.newDesc.setText(line[3:])
