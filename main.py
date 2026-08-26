@@ -4,12 +4,13 @@ import sys
 import os
 import re
 from tinytag import TinyTag # Displays and edits song metadata
+import time
 
 import find_forgotten_songs
 import m3u_cleaner
 
 # TODO: combine like includes
-from PyQt5.QtWidgets import QApplication, QMainWindow, QPushButton, QLabel, QVBoxLayout, QWidget, QListWidget, QApplication, QAbstractItemView, QLineEdit, QAbstractItemView, QSlider
+from PyQt5.QtWidgets import QApplication, QMainWindow, QPushButton, QLabel, QVBoxLayout, QWidget, QListWidget, QApplication, QAbstractItemView, QLineEdit, QAbstractItemView, QSlider, QWidgetAction
 from PyQt5.QtMultimedia import QMediaPlayer, QMediaContent
 from PyQt5.QtCore import QUrl
 from PyQt5.QtWidgets import QApplication, QMainWindow, QMenu, QAction
@@ -71,10 +72,6 @@ class PlaylistViewerWindow(QWidget):
         layout.addWidget(self.songsListWidget)
         self.songsListWidget.setSelectionMode(QAbstractItemView.ExtendedSelection) # Enables multi-item list selections
 
-        # self.button = QPushButton("Edit Song")
-        # self.button.clicked.connect(self.open_metadata_editor)
-        # layout.addWidget(self.button)
-
         self.button = QPushButton("Refresh")
         self.button.clicked.connect(self.prep_Window)
         layout.addWidget(self.button)
@@ -91,7 +88,7 @@ class PlaylistViewerWindow(QWidget):
         self.mDSongsWindow = None # Holder variable for the Meta Data Song editor window
 
     def prep_Window(self):
-        self.setWindowTitle(self.selectedPlaylist.text()[:-5])  #TODO: Scrape off file extension
+        self.setWindowTitle(self.selectedPlaylist.text()[:-5])
         self.songsListWidget.clear()
 
         fileName = (playlistsPath + "//" + self.selectedPlaylist.text())
@@ -231,8 +228,12 @@ class MainWindow(QMainWindow):
         self.display_playlists()
         layout.addWidget(self.playlistList)
 
-        mPlayer.positionChanged.connect(self.update_slider_position)
+        self.nowPlayingText = QLabel("Currently Playing: Nothing")
+        layout.addWidget(self.nowPlayingText)
+        mPlayer.currentMediaChanged.connect(self.update_now_playing_label)
+
         # Progress bar for position in song
+        mPlayer.positionChanged.connect(self.update_slider_position) # Slider stays in position with correct point in song
         self.bar = QSlider(Qt.Horizontal)
         self.bar.setRange(0, 100)
         self.bar.sliderReleased.connect(self.update_song_time)
@@ -292,6 +293,14 @@ class MainWindow(QMainWindow):
             percent = (position / duration) * 100 # Convert position to number out of 100 so I don't have to update the slider values per song (which would break current update_song_time() implementation)
             self.bar.setValue(int(percent))
 
+    # Get currently playing media from player and convert URL into readable format
+    def update_now_playing_label(self):
+        songPath = mPlayer.currentMedia().canonicalUrl()
+        splitPath = str(songPath).split("//")
+        songTitle = splitPath[len(splitPath) - 1][:-2]
+
+        self.nowPlayingText.setText("Currently Playing: " + songTitle)
+
     # Set song time to position on slider
     def update_song_time(self):
         if mPlayer.isSeekable():
@@ -327,17 +336,27 @@ class MainWindow(QMainWindow):
             self.selectionChanged()
 
 
-
+    # Playlist modification options for main window
     def main_context_menu(self, position):
         context = QMenu(self)
+
+        # Description of selected playlist (if applicable)
+        text_action = QWidgetAction(context)
+        text_description = QLabel(" ")
+        text_action.setDefaultWidget(text_description)
+        context.addAction(text_action)
+
+        context.addSeparator()
 
         open_playlist = QAction("Open playlist", self)
         open_playlist.triggered.connect(self.window_playlist_contents)
         context.addAction(open_playlist)
 
+
         edit_playlist = QAction("Edit playlist", self)
         edit_playlist.triggered.connect(lambda: create_new_playlist(self, True, self.playlistList.selectedItems()[0]))
         context.addAction(edit_playlist)
+
 
         create_playlist = QAction("Create playlist", self)
         create_playlist.triggered.connect(lambda: create_new_playlist(self))
@@ -346,6 +365,22 @@ class MainWindow(QMainWindow):
         delete_playlist = QAction("Delete playlist", self)
         delete_playlist.triggered.connect(lambda: self.delete_playlist(self.playlistList.selectedItems()[0]))
         context.addAction(delete_playlist)
+
+        # Disable options that require a specific playlist to be selected if no playlist is selected
+        if not self.playlistList.selectedItems():
+            open_playlist.setEnabled(False)
+            edit_playlist.setEnabled(False)
+            delete_playlist.setEnabled(False)
+        else: # If a playlist is selected, search for a playlist description to add to menu
+            playlist_url = playlistsPath + "\\" + str(self.playlistList.selectedItems()[0].text())
+            with open(playlist_url, "r", encoding="utf-8") as f:
+                for lines in f:
+                    if lines.startswith("###"):
+                        text_description.setText(lines[3:])
+                        break
+                    if not lines.startswith("#"):
+                        break
+                f.close()
 
         context.exec(self.mapToGlobal(position))
 
@@ -379,6 +414,8 @@ def edit_songs_menu(self, position, selected_items, input_playlist = None):
     action_play_music = QAction("Play Song")
     action_play_music.triggered.connect(lambda: play_song(self, selected_items[0].text()))
     context_menu.addAction(action_play_music)
+    if not selected_items: # You may only play a song if it's selected
+        action_play_music.setEnabled(False)
 
     # Move songs to a new playlist without modifying an existing playlist
     action_one = QMenu("Copy song(s) to new playlist")
@@ -443,6 +480,7 @@ def copy_songs_to_playlist(self, songs, input_playlist = None, output_playlist =
             f.seek(0, os.SEEK_END)
 
             for song in songs:
+                print("Writing songs")
                 f.write(f"\n..\\{song.text()}".encode("utf-8"))
 
             f.write(b"\n") # Making sure playlists end uniformly w/ a newline character
@@ -456,11 +494,10 @@ def copy_songs_to_playlist(self, songs, input_playlist = None, output_playlist =
         songs_to_remove = {f"..\\{song.text()}" for song in songs}
 
         # Save the data of the current file
-        with open (fileName, "r") as f: # this probably won't cut it. I'm going to read this file and then overwrite it with lines missing
+        with open(fileName, "r", encoding="utf-8") as f:
             file_data = f.read()
 
-        # Scan over the saved file data and only save songs if not in "songs" var 
-        with open (fileName, "w") as f:
+        with open(fileName, "w", encoding="utf-8") as f:
             for line in file_data.splitlines():
                 if line.startswith("#") or line not in songs_to_remove:
                     f.write(line + "\n")
@@ -486,11 +523,16 @@ def create_new_playlist(self, overwrite = False, selectedPlaylist = None):
 
 # Empty music queue and play currently selected song from any window
 def play_song(self, inputSong):
+
     mPlayer.stop()
     url = QUrl.fromLocalFile(str(songspath + "//" + inputSong))
-    # print(url)
     mPlayer.setMedia(QMediaContent(url))
+
+    # Song is muted when it starts to stop a high-pitched chirp from playing when I start louder songs
+    mPlayer.setMuted(True)
     mPlayer.play()
+    time.sleep(0.2)
+    mPlayer.setMuted(False)
 
 
 if __name__ == "__main__":
