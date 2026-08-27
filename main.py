@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-### m3u playlist editor that prepares files for transfer to my phone and allows bulk file movement
+### m3u8 playlist editor that prepares files for transfer to my phone and allows bulk file movement
+
+
 import sys
 import os
 import re
@@ -12,17 +14,148 @@ import m3u_cleaner
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QPushButton, QLabel, QVBoxLayout, QWidget, 
     QListWidget, QApplication, QAbstractItemView, QLineEdit, QAbstractItemView, 
-    QSlider, QWidgetAction, QApplication, QMainWindow, QMenu, QAction
+    QSlider, QWidgetAction, QApplication, QMainWindow, QMenu, QAction, QCheckBox
     )
 from PyQt5.QtMultimedia import QMediaPlayer, QMediaContent
-from PyQt5.QtCore import QUrl, Qt
+from PyQt5.QtCore import QUrl, Qt, QTimer
+
 
 pathListPath = "C:\\Users\\payto\\OneDrive\\Desktop\\Music Project\\Stained-Glass-Music-Player\\paths.json" # One hard-coded path to avoid many more hard-coded paths
 songspath = ""
 playlistsPath = ""
 
-
 mPlayer = QMediaPlayer()
+
+
+class SearchMusicWindow(QWidget):
+    def __init__(self):
+        super().__init__()
+
+        layout = QVBoxLayout()
+        self.setWindowTitle("Search Music")
+
+        # TODO: Some sort of delay so that searching only starts when typing stops
+        self.searchbarWidget = QLineEdit()
+        self.searchbarWidget.setPlaceholderText("Search here. use \" || \" between queries to search multiple things at once") # Because if this ever existed anywhere, no one told me >:(
+        self.searchbarWidget.textChanged.connect(self.searchCall)
+        layout.addWidget(self.searchbarWidget)
+
+        # Timer that goes off a set amount of time after the last character was entered into the search bar
+        self.searchTimer = QTimer(self)
+        self.searchTimer.setSingleShot(True)
+        self.searchTimer.timeout.connect(self.regularSearch)
+
+        self.advancedToggle = QCheckBox()
+        self.advancedToggle.stateChanged.connect(self.updateToggle)
+        layout.addWidget(self.advancedToggle)
+
+        # TODO: This label should sit directly next to the checkbox
+        self.toggleLabel = QLabel("Advanced Search")
+        layout.addWidget(self.toggleLabel)
+
+        self.artistSearchLabel = QLabel("Results by artist name")
+        layout.addWidget(self.artistSearchLabel)
+
+        self.artistSearchResults = QListWidget()
+        layout.addWidget(self.artistSearchResults)
+        self.artistSearchResults.setSelectionMode(QAbstractItemView.ExtendedSelection)
+
+        self.albumSearchLabel = QLabel("Results by album name")
+        layout.addWidget(self.albumSearchLabel)
+
+        self.albumSearchResults = QListWidget()
+        layout.addWidget(self.albumSearchResults)
+        self.albumSearchResults.setSelectionMode(QAbstractItemView.ExtendedSelection)
+
+        self.basicSearchLabel = QLabel("Title Search Results")
+        layout.addWidget(self.basicSearchLabel)
+
+        # Regular search
+        self.primarySearchResults = QListWidget()
+        layout.addWidget(self.primarySearchResults)
+        self.primarySearchResults.setSelectionMode(QAbstractItemView.ExtendedSelection)
+
+        # Enable Music editor context menu
+        self.setup_context_menu(self.artistSearchResults)
+        self.setup_context_menu(self.albumSearchResults)
+        self.setup_context_menu(self.primarySearchResults)
+
+
+        # Hiding advanced search results by default
+        self.artistSearchResults.hide()
+        self.albumSearchResults.hide()
+        self.artistSearchLabel.hide()
+        self.albumSearchLabel.hide()
+
+        self.setLayout(layout)
+
+        self.isAdvancedSearch = False
+
+    def updateToggle(self):
+        self.isAdvancedSearch = not self.isAdvancedSearch
+
+        if self.isAdvancedSearch:
+            self.artistSearchResults.show()
+            self.albumSearchResults.show()
+            self.artistSearchLabel.show()
+            self.albumSearchLabel.show()
+        else:
+            self.artistSearchResults.hide()
+            self.albumSearchResults.hide()
+            self.artistSearchLabel.hide()
+            self.albumSearchLabel.hide()
+
+    # def performSearch(self):
+    #     print("Searching:")
+
+    # Search only a second or so after the last char was entered into the line editor
+    def searchCall(self):
+        self.searchTimer.start(500) # ~0.5 seconds delay because advanced search causes some lag
+
+    # Scan the given music directory and display all files
+    # TODO: Filter out non-music files so that tinytag doesn't crash
+    # TODO: Rename this. This is all of the searches, not just regular
+    def regularSearch(self):
+        ## TODO: THere should be a delay of like 1 second after the last character was entered before we run this. Then I'll feel less bad
+        self.primarySearchResults.clear()
+        self.artistSearchResults.clear()
+        self.albumSearchResults.clear()
+
+        #"or" operator support. I name music inconsistently (IE: JoCo vs Jonathan Coulton) so I want to be able to search multiple queries at once
+        query = self.searchbarWidget.text().lower().split(" || ")
+
+        for (dirpath, dirnames, filenames) in os.walk(songspath):
+            for file in filenames:
+
+                try: # Tiny tag might fail and cause a crash if non-music files are present in the music folder so it must be able to quietly fail
+                    tagData = TinyTag.get(songspath + "\\" + file) # Extract metadata from song for advanced search
+                except:
+                    pass
+
+                for request in query:
+                    if request in file.lower():
+                        self.primarySearchResults.addItem(file)
+
+                    # TODO: the try-except structure is not right for this. I should look into something more appropriate
+                    try:
+                        if request in tagData.artist.lower():
+                            self.artistSearchResults.addItem(file)
+
+                        if request in tagData.album.lower():
+                            self.albumSearchResults.addItem(file)
+                    except:
+                        pass
+
+    # For setting up the three different context menus for the 3 different QListWidgets on the search page
+    def setup_context_menu(self, widget):
+        widget.setContextMenuPolicy(Qt.CustomContextMenu)
+        widget.customContextMenuRequested.connect(
+            lambda position: edit_songs_menu(
+                self,
+                widget.mapTo(self, position),
+                widget.selectedItems()
+            )
+        )
 
 # Lists songs not yet put into a playlist. Popup Window (disabled by default)
 class ForgottenSongsWindow(QWidget):
@@ -45,7 +178,7 @@ class ForgottenSongsWindow(QWidget):
         self.setContextMenuPolicy(Qt.CustomContextMenu)
         self.customContextMenuRequested.connect(
             lambda position: edit_songs_menu(self, position, self.songsListWidget.selectedItems())
-        ) # Real one will edit playlist names and descriptions
+        ) 
 
         # Run these functions once automatically while setting up with window
         self.setLayout(layout)
@@ -252,17 +385,26 @@ class MainWindow(QMainWindow):
         self.button.clicked.connect(self.m3u_repair)
         layout.addWidget(self.button)
 
+        self.button = QPushButton("Search Music")
+        self.button.clicked.connect(self.search_window_activate)
+        layout.addWidget(self.button)
+
         # Enable custom context menu
         self.setContextMenuPolicy(Qt.CustomContextMenu)
         self.customContextMenuRequested.connect(self.main_context_menu) # Real one will edit playlist names and descriptions
 
         # Holder vars for child windows of main
+        self.searchMusicWindow = None
         self.fFSongsWindow = None
         self.pCSongsWindow = None
         self.playListEditorWindow = None
         self.selectedPlaylist = None
 
     # separate window opener funcs
+
+    def search_window_activate(self):
+        self.searchMusicWindow = SearchMusicWindow()
+        self.searchMusicWindow.show()
 
     # display all songs not inside of a playlist
     def window_unused_songs(self, checked):
@@ -463,7 +605,7 @@ def copy_songs_to_playlist(self, songs, input_playlist = None, output_playlist =
     if output_playlist is not None: # output_playlist may be "none" if songs are just being deleted from current playlist instead of moved
         fileName = (playlistsPath + "//" + output_playlist)
 
-        with open(fileName, "rb+", encoding="utf-8") as f:
+        with open(fileName, "rb+") as f:
             # Go to the end of the file
             f.seek(0, os.SEEK_END)
             pos = f.tell()
@@ -482,7 +624,7 @@ def copy_songs_to_playlist(self, songs, input_playlist = None, output_playlist =
             f.seek(0, os.SEEK_END)
 
             for song in songs:
-                print("Writing songs")
+                # print("Writing songs")
                 f.write(f"\n..\\{song.text()}".encode("utf-8"))
 
             f.write(b"\n") # Making sure playlists end uniformly w/ a newline character
@@ -492,7 +634,7 @@ def copy_songs_to_playlist(self, songs, input_playlist = None, output_playlist =
 
         # Variables we only need if there's a valid input playlist
         file_data = ""
-        fileName = (playlistsPath + "//" + input_playlist.text())
+        fileName = (playlistsPath + "//" + input_playlist)
         songs_to_remove = {f"..\\{song.text()}" for song in songs}
 
         # Save the data of the current file
