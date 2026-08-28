@@ -27,6 +27,7 @@ playlistsPath = ""
 mPlayer = QMediaPlayer()
 
 
+# Search over music by name, artist, or album
 class SearchMusicWindow(QWidget):
     def __init__(self):
         super().__init__()
@@ -34,25 +35,25 @@ class SearchMusicWindow(QWidget):
         layout = QVBoxLayout()
         self.setWindowTitle("Search Music")
 
-        # TODO: Some sort of delay so that searching only starts when typing stops
+        # Search bar logic
         self.searchbarWidget = QLineEdit()
         self.searchbarWidget.setPlaceholderText("Search here. use \" || \" between queries to search multiple things at once") # Because if this ever existed anywhere, no one told me >:(
-        self.searchbarWidget.textChanged.connect(self.searchCall)
+        self.searchbarWidget.textChanged.connect(self.search_call)
         layout.addWidget(self.searchbarWidget)
 
         # Timer that goes off a set amount of time after the last character was entered into the search bar
         self.searchTimer = QTimer(self)
         self.searchTimer.setSingleShot(True)
-        self.searchTimer.timeout.connect(self.regularSearch)
+        self.searchTimer.timeout.connect(self.music_search)
 
         self.advancedToggle = QCheckBox()
-        self.advancedToggle.stateChanged.connect(self.updateToggle)
+        self.advancedToggle.stateChanged.connect(self.update_toggle)
         layout.addWidget(self.advancedToggle)
 
-        # TODO: This label should sit directly next to the checkbox
         self.toggleLabel = QLabel("Advanced Search")
         layout.addWidget(self.toggleLabel)
 
+        # Search Results
         self.artistSearchLabel = QLabel("Results by artist name")
         layout.addWidget(self.artistSearchLabel)
 
@@ -70,7 +71,7 @@ class SearchMusicWindow(QWidget):
         self.basicSearchLabel = QLabel("Title Search Results")
         layout.addWidget(self.basicSearchLabel)
 
-        # Regular search
+        # search
         self.primarySearchResults = QListWidget()
         layout.addWidget(self.primarySearchResults)
         self.primarySearchResults.setSelectionMode(QAbstractItemView.ExtendedSelection)
@@ -91,7 +92,7 @@ class SearchMusicWindow(QWidget):
 
         self.isAdvancedSearch = False
 
-    def updateToggle(self):
+    def update_toggle(self):
         self.isAdvancedSearch = not self.isAdvancedSearch
 
         if self.isAdvancedSearch:
@@ -99,24 +100,19 @@ class SearchMusicWindow(QWidget):
             self.albumSearchResults.show()
             self.artistSearchLabel.show()
             self.albumSearchLabel.show()
+            self.music_search() # Fill out advanced search options if the toggle is activated
         else:
             self.artistSearchResults.hide()
             self.albumSearchResults.hide()
             self.artistSearchLabel.hide()
             self.albumSearchLabel.hide()
 
-    # def performSearch(self):
-    #     print("Searching:")
-
     # Search only a second or so after the last char was entered into the line editor
-    def searchCall(self):
-        self.searchTimer.start(500) # ~0.5 seconds delay because advanced search causes some lag
+    def search_call(self):
+        self.searchTimer.start(500) # ~0.5 seconds delay
 
     # Scan the given music directory and display all files
-    # TODO: Filter out non-music files so that tinytag doesn't crash
-    # TODO: Rename this. This is all of the searches, not just regular
-    def regularSearch(self):
-        ## TODO: THere should be a delay of like 1 second after the last character was entered before we run this. Then I'll feel less bad
+    def music_search(self):
         self.primarySearchResults.clear()
         self.artistSearchResults.clear()
         self.albumSearchResults.clear()
@@ -125,26 +121,23 @@ class SearchMusicWindow(QWidget):
         query = self.searchbarWidget.text().lower().split(" || ")
 
         for (dirpath, dirnames, filenames) in os.walk(songspath):
-            for file in filenames:
+            for file in filenames: # obtain all files in the music folder
 
-                try: # Tiny tag might fail and cause a crash if non-music files are present in the music folder so it must be able to quietly fail
-                    tagData = TinyTag.get(songspath + "\\" + file) # Extract metadata from song for advanced search
-                except:
-                    pass
-
-                for request in query:
+                for request in query: # Iterate over all keywords searched
                     if request in file.lower():
                         self.primarySearchResults.addItem(file)
 
-                    # TODO: the try-except structure is not right for this. I should look into something more appropriate
-                    try:
-                        if request in tagData.artist.lower():
-                            self.artistSearchResults.addItem(file)
+                    if self.isAdvancedSearch == True: # Tinytag is slow if you have a lot of music so the advanced toggle should only run if it's on
 
-                        if request in tagData.album.lower():
-                            self.albumSearchResults.addItem(file)
-                    except:
-                        pass
+                        try: # Tiny tag might fail and cause a crash if non-music files are present in the music folder so it must be able to quietly fail
+                            tagData = TinyTag.get(songspath + "\\" + file) # Extract metadata from song for advanced search
+                            if request in tagData.artist.lower():
+                                self.artistSearchResults.addItem(file)
+
+                            if request in tagData.album.lower():
+                                self.albumSearchResults.addItem(file)
+                        except:
+                            pass
 
     # For setting up the three different context menus for the 3 different QListWidgets on the search page
     def setup_context_menu(self, widget):
@@ -156,6 +149,7 @@ class SearchMusicWindow(QWidget):
                 widget.selectedItems()
             )
         )
+
 
 # Lists songs not yet put into a playlist. Popup Window (disabled by default)
 class ForgottenSongsWindow(QWidget):
@@ -207,7 +201,7 @@ class PlaylistViewerWindow(QWidget):
         self.songsListWidget.setSelectionMode(QAbstractItemView.ExtendedSelection) # Enables multi-item list selections
 
         self.button = QPushButton("Refresh")
-        self.button.clicked.connect(self.prep_Window)
+        self.button.clicked.connect(self.prep_window)
         layout.addWidget(self.button)
 
         # Enable custom context menu
@@ -221,7 +215,7 @@ class PlaylistViewerWindow(QWidget):
         self.selectedPlaylist = None # Playlist passed from main window when this is opened
         self.mDSongsWindow = None # Holder variable for the Meta Data Song editor window
 
-    def prep_Window(self):
+    def prep_window(self):
         self.setWindowTitle(self.selectedPlaylist[:-5])
         self.songsListWidget.clear()
 
@@ -235,36 +229,6 @@ class PlaylistViewerWindow(QWidget):
                 else: # Display remaining files that contain a file extension
                     self.songsListWidget.addItem(x[3:].strip())
         f.close()
-        
-    def open_metadata_editor(self):
-        # print("Selected item: ", self.songsListWidget.selectedItems())
-        self.mDSongsWindow = metadata_window()
-        self.mDSongsWindow.selectedSong = TinyTag.get("../" + self.songsListWidget.selectedItems()[0].text())
-        self.mDSongsWindow.show()
-
-
-# Display metadata for song and allow user to change any metadata they want to
-class metadata_window(QWidget): 
-    def __init__(self):
-        super().__init__()
-
-        layout = QVBoxLayout()
-        self.setWindowTitle("Edit Song Metadata") # TODO: Set this to the Song name
-
-        self.playlistDescription = QLabel()
-        self.playlistDescription.setText(" ")
-        layout.addWidget(self.playlistDescription)
-
-        self.newName = QLineEdit()
-        layout.addWidget(self.newName)
-
-        self.button = QPushButton("Submit")
-        layout.addWidget(self.button)
-        # TODO: HOok this up to a function that updates metadata with everything inside of the lineedit widget
-
-        self.setLayout(layout)
-
-        self.selectedSong = None # Song selected when this window is open
 
 
 # change/create playlist name and description
@@ -355,7 +319,7 @@ class MainWindow(QMainWindow):
         # Display all playlists in list
         self.playlistList = QListWidget()
         self.playlistList.setSelectionMode(QAbstractItemView.SingleSelection)
-        self.playlistList.itemSelectionChanged.connect(self.selectionChanged)
+        self.playlistList.itemSelectionChanged.connect(self.selection_changed)
         self.display_playlists()
         layout.addWidget(self.playlistList)
 
@@ -413,12 +377,11 @@ class MainWindow(QMainWindow):
 
     # display all songs inside of playlist
     def window_playlist_contents(self):
-        # print("Selected items: ", self.playlistList.selectedItems())
 
         if self.selectedPlaylist is not None:
             self.pCSongsWindow = PlaylistViewerWindow()
             self.pCSongsWindow.selectedPlaylist = self.selectedPlaylist.text()
-            self.pCSongsWindow.prep_Window()
+            self.pCSongsWindow.prep_window()
             self.pCSongsWindow.show()
         else:
             print("ERROR: Please select a playlist to proceed")
@@ -454,7 +417,7 @@ class MainWindow(QMainWindow):
         mPlayer.play() if mPlayer.state() == QMediaPlayer.PausedState else mPlayer.pause()
 
     # Store current playlistList selection into a variable for later use
-    def selectionChanged(self):
+    def selection_changed(self):
         self.selectedPlaylist = self.playlistList.currentItem()
 
     # m3u repair script
@@ -476,7 +439,7 @@ class MainWindow(QMainWindow):
         if os.path.exists(targetPath):
             os.remove(targetPath)
             self.display_playlists() # refresh playlists when done
-            self.selectionChanged()
+            self.selection_changed()
 
 
     # Playlist modification options for main window
@@ -489,12 +452,12 @@ class MainWindow(QMainWindow):
 
 
         edit_playlist = QAction("Edit playlist", self)
-        edit_playlist.triggered.connect(lambda: create_new_playlist(self, True, self.playlistList.selectedItems()[0]))
+        edit_playlist.triggered.connect(lambda: self.create_new_playlist(True, self.playlistList.selectedItems()[0]))
         context.addAction(edit_playlist)
 
 
         create_playlist = QAction("Create playlist", self)
-        create_playlist.triggered.connect(lambda: create_new_playlist(self))
+        create_playlist.triggered.connect(self.create_new_playlist)
         context.addAction(create_playlist)
 
         delete_playlist = QAction("Delete playlist", self)
@@ -528,21 +491,37 @@ class MainWindow(QMainWindow):
 
         context.exec(self.mapToGlobal(position))
 
+    def create_new_playlist(self, overwrite = False, selectedPlaylist = None):
 
-    def closeEvent(self, event):
+        # Summon Playlist Editor Window so user may input new data
+        self.playListEditorWindow = playlistEditorWindow()
+        self.playListEditorWindow.selectedPlaylist = self.selectedPlaylist
+        if overwrite: self.playListEditorWindow.playlistToDelete = self.selectedPlaylist
+        self.playListEditorWindow.parent_window = self
+        self.playListEditorWindow.show()
+
+        if self.selectedPlaylist is not None and overwrite == True:
+            self.playListEditorWindow.newName.setText(self.selectedPlaylist.text()[:-5])
+            with open(f"{playlistsPath}//{self.selectedPlaylist.text()}", "r", encoding="utf-8") as f:
+                for line in f:
+                    if line.startswith("###"):
+                        self.playListEditorWindow.newDesc.setText(line[3:])
+
+    # Closes all pages when the top-level page is closed
+    def close_event(self, event):
         for window in QApplication.topLevelWidgets():
             window.close()
 
 
 # Initialize file paths before running software
-def ScanFilePaths():
+def scan_file_paths():
     with open(pathListPath, "r", encoding="utf-8") as f:
         global songspath
         global playlistsPath
 
         for lines in f:
             if lines.startswith("songs"):
-                matches = re.findall(r'"([^"]*)"', lines)
+                matches = re.findall(r'"([^"]*)"', lines) # Regex to capture the filepath in quotations
                 songspath = matches[0]
             if lines.startswith("playlists"):
                 matches = re.findall(r'"([^"]*)"', lines)
@@ -647,25 +626,6 @@ def copy_songs_to_playlist(self, songs, input_playlist = None, output_playlist =
                     f.write(line + "\n")
 
 
-#generate a new playlist with it's own description
-# Global so that I can make this a dropdown menu option that also exists on basically every window
-def create_new_playlist(self, overwrite = False, selectedPlaylist = None):
-
-    # Summon Playlist Editor Window so user may input new data
-    self.playListEditorWindow = playlistEditorWindow()
-    self.playListEditorWindow.selectedPlaylist = self.selectedPlaylist
-    if overwrite: self.playListEditorWindow.playlistToDelete = self.selectedPlaylist
-    self.playListEditorWindow.parent_window = self
-    self.playListEditorWindow.show()
-
-    if self.selectedPlaylist is not None and overwrite == True:
-        self.playListEditorWindow.newName.setText(self.selectedPlaylist.text()[:-5])
-        with open(f"{playlistsPath}//{self.selectedPlaylist.text()}", "r", encoding="utf-8") as f:
-            for line in f:
-                if line.startswith("###"):
-                    self.playListEditorWindow.newDesc.setText(line[3:])
-
-
 # Empty music queue and play currently selected song from any window
 def play_song(self, inputSong):
 
@@ -673,7 +633,7 @@ def play_song(self, inputSong):
     url = QUrl.fromLocalFile(str(songspath + "//" + inputSong))
     mPlayer.setMedia(QMediaContent(url))
 
-    # Song is muted when it starts to stop a high-pitched chirp from playing when I start louder songs
+    # If song isn't muted when it starts, some songs will make a high-pitched chirping sound
     mPlayer.setMuted(True)
     mPlayer.play()
     time.sleep(0.2)
@@ -681,7 +641,7 @@ def play_song(self, inputSong):
 
 
 if __name__ == "__main__":
-    ScanFilePaths()
+    scan_file_paths()
 
     app = QApplication(sys.argv)
     w = MainWindow()
