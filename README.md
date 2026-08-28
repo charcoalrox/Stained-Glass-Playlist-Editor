@@ -1,4 +1,4 @@
-# Stained-Glass-Music-Player
+# Stained-Glass-Playlist-Editor
 
 **Description:**
 As someone who prefers to collect and own physical music files instead of streaming them, I run into issues using standard music players to edit my playlists. Windows Media Player is great but the inability to do things like make descriptions, look at multiple playlists at once, or delete more than one song without refreshing the page has made adding new music to my computer a really slow and tedious task. While I probably could have searched for software or tried VLC Media Player to do this instead, I thought it would be more fun to try and make my own and make sure I already had all of the features I wanted in a playlist editor by default. <br>
